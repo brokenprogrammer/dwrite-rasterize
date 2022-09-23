@@ -11,7 +11,7 @@ where /Q cl.exe || (
     call "!VisualStudio!\VC\Auxiliary\Build\vcvarsall.bat" x64 || exit /b
 )
 
-set compile_flags= -Od -MTd -nologo -fp:fast -fp:except- -Gm- -GR- -EHa- -Zo -Oi -Z7 /FC -wd4201 -wd4505 -wd4100 -wd4189 -wd4127 -wd4311 /I ../src/engine/ /I ../src/game/
+set compile_flags= -Od -MTd -nologo -fp:fast -fp:except- -Gm- -GR- -EHa- -Zo -Oi -Z7 /FC -wd4201 -wd4505 -wd4100 -wd4189 -wd4127 -wd4311
 set link_flags= gdi32.lib user32.lib winmm.lib ole32.lib opengl32.lib -opt:ref -incremental:no /Debug:full
 
 if not exist build mkdir build
