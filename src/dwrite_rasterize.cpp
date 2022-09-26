@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdint.h>
+#include <intrin.h>
 
 #include <gl/gl.h>
 #include "../ext/wglext.h"
@@ -15,6 +16,32 @@
 #include "dwrite_opengl.cpp"
 
 #define L_WINDOW_CLASS_NAME L"window-class"
+
+char *VS = "\n"
+    "#version 330 core\n"
+    "in vec2 pos;\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "   gl_Position = vec4(pos.x, pos.y, 0.0f, 1.0f);\n"
+    "}\n"
+    "\n";
+
+char *FS = "\n"
+    "#version 330 core\n"
+    "out vec4 color;\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "   color = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
+    "}\n"
+    "\n";
+
+float vertices[] = {
+    -0.5f, -0.5f,
+     0.5f, -0.5f,
+     0.0f,  0.5f,
+}; 
 
 LRESULT 
 Win32WindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -75,9 +102,61 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
 
     HGLRC RenderContext = Win32InitializeOpenGLContext(DeviceContext);
 
+    // NOTE(Oskar): VBO
+    GLuint VBO;
+    {
+        glCreateBuffers(1, &VBO);
+        glNamedBufferStorage(VBO, sizeof(vertices), vertices, 0);
+    }
+
+    // NOTE(Oskar): VAO
+    GLuint VAO;
+    {
+        glCreateVertexArrays(1, &VAO);
+
+        GLint BufferIndex = 0;
+        glVertexArrayVertexBuffer(VAO, BufferIndex, VBO, 0, 2 * sizeof(float));
+
+        GLint Pos = 0;
+        glVertexArrayAttribFormat(VAO, Pos, 2, GL_FLOAT, GL_FALSE, 0);
+        glVertexArrayAttribBinding(VAO, Pos, BufferIndex);
+        glEnableVertexArrayAttrib(VAO, Pos);
+    }
+
+    // NOTE(Oskar): Shaders
+    GLuint Pipeline;
+    GLuint VShader;
+    GLuint FShader;
+    {
+        VShader = glCreateShaderProgramv(GL_VERTEX_SHADER, 1, &VS);
+        FShader = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &FS);
+
+        GLint Linked;
+        glGetProgramiv(VShader, GL_LINK_STATUS, &Linked);
+        if (!Linked)
+        {
+            char Message[1024];
+            glGetProgramInfoLog(VShader, sizeof(Message), NULL, Message);
+            OutputDebugStringA(Message);
+            Assert(!"Failed to create vertex shader!");
+        }
+
+        glGetProgramiv(FShader, GL_LINK_STATUS, &Linked);
+        if (!Linked)
+        {
+            char Message[1024];
+            glGetProgramInfoLog(FShader, sizeof(Message), NULL, Message);
+            OutputDebugStringA(Message);
+            Assert(!"Failed to create fragment shader!");
+        }
+
+        glGenProgramPipelines(1, &Pipeline);
+        glUseProgramStages(Pipeline, GL_VERTEX_SHADER_BIT, VShader);
+        glUseProgramStages(Pipeline, GL_FRAGMENT_SHADER_BIT, FShader);
+    }
+
     BOOL VSYNC = TRUE;
     wglSwapIntervalEXT(VSYNC ? 1 : 0);
-
     ShowWindow(Window, SW_SHOWDEFAULT);
 
     for (;;)
@@ -91,6 +170,12 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
 
         glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        // NOTE(Oskar): Use shaders
+        glBindProgramPipeline(Pipeline);
+        glBindVertexArray(VAO);
+        glDrawArrays(GL_TRIANGLES, 0, 3);   
+
         SwapBuffers(DeviceContext);
     }
 

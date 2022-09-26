@@ -1,4 +1,3 @@
-// make sure you use functions that are valid for selected GL version (specified when context is created)
 #define GL_FUNCTIONS(X) \
     X(PFNGLCREATEBUFFERSPROC,            glCreateBuffers            ) \
     X(PFNGLNAMEDBUFFERSTORAGEPROC,       glNamedBufferStorage       ) \
@@ -68,15 +67,14 @@ static void APIENTRY DebugCallback(
 static HWND
 Win32OpenGLCreateDummyWindow()
 {
-    // To get WGL functions we need valid GL context, so create dummy window for dummy GL contetx
     HWND DummyContext = CreateWindowExW(
-        0,                              // Extended Window Style
-        L"STATIC",                      // Class Name
-        L"DummyWindow",                 // Window Name
-        WS_OVERLAPPED,                  // Window Style
-        CW_USEDEFAULT, CW_USEDEFAULT,   // X, Y
-        CW_USEDEFAULT, CW_USEDEFAULT,   // Width, Height
-        NULL, NULL, NULL, NULL);        // Parent, Menu, Related HInstance, LPParam 
+        0,
+        L"STATIC",
+        L"DummyWindow",
+        WS_OVERLAPPED,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        NULL, NULL, NULL, NULL);
     Assert(DummyContext && "Failed to create DummyContext window");
 
     return (DummyContext);
