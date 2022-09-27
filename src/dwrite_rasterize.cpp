@@ -9,6 +9,8 @@
 #include "../ext/wglext.h"
 #include "../ext/glext.h"
 
+#include <dwrite_1.h>
+
 #define STN_USE_STRING
 #include "../ext/stn.h"
 
@@ -41,7 +43,28 @@ float vertices[] = {
     -0.5f, -0.5f,
      0.5f, -0.5f,
      0.0f,  0.5f,
-}; 
+};
+float PointSize = 12.0f;
+float DPI = 96.0f;
+
+struct glyph_metrics
+{
+    float OffsetX;
+    float OffsetY;
+    float Advance;
+    float XYW;
+    float XYH;
+    float UVW;
+    float UVH;
+};
+
+struct dwrite_font
+{
+    IDWriteFontFace *Font;
+    GLuint Texture;
+    glyph_metrics *Metrics;
+    int32_t GlyphCount;
+};
 
 LRESULT 
 Win32WindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -153,6 +176,63 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glGenProgramPipelines(1, &Pipeline);
         glUseProgramStages(Pipeline, GL_VERTEX_SHADER_BIT, VShader);
         glUseProgramStages(Pipeline, GL_FRAGMENT_SHADER_BIT, FShader);
+    }
+
+    static wchar_t FontPath[] = L"C:\\Windows\\Fonts\\arial.ttf";
+    dwrite_font Font = {};
+    {
+        HRESULT Error = 0;
+
+        // Create factory
+        IDWriteFactory *Factory = 0;
+        Error = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown**)&Factory);
+        // TODO(Oskar): Release
+        // TODO(Oskar): CheckPtr
+
+        // Read font file
+        IDWriteFontFile *FontFile = 0;
+        Error = Factory->CreateFontFileReference(FontPath, 0, &FontFile);
+        // TODO(Oskar): Release
+        // TODO(Oskar): CheckPtr
+
+        // Create font face
+        Error = Factory->CreateFontFace(DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &FontFile, 0, DWRITE_FONT_SIMULATIONS_NONE, &Font.Font);
+        // TODOO(Oskar): CheckPtr
+
+        // Font rendering params
+        IDWriteRenderingParams *DefaultRenderingParams = 0;
+        Error = Factory->CreateRenderingParams(&DefaultRenderingParams);
+        // TODO(Oskar): Release
+        // TODO(Oskar): CheckPtr
+
+        FLOAT Gamma = 1.0f;
+
+        // Custom rendering params
+        IDWriteRenderingParams *RenderingParams = 0;
+        Error = Factory->CreateCustomRenderingParams(Gamma,
+                                                     DefaultRenderingParams->GetEnhancedContrast(),
+                                                     DefaultRenderingParams->GetClearTypeLevel(),
+                                                     DefaultRenderingParams->GetPixelGeometry(),
+                                                     DWRITE_RENDERING_MODE_NATURAL,
+                                                     &RenderingParams);
+        // TODO(Oskar): Release
+        // TODO(Oskar): CheckPtr
+
+        // GDI
+        IDWriteGdiInterop *DWriteGDIInterop = 0;
+        Error = Factory->GetGdiInterop(&DWriteGDIInterop);
+        // TODO(Oskar): Release
+        // TODO(Oskar): CheckPtr
+
+        // Get metrics
+        DWRITE_FONT_METRICS FontMetrics = {};
+        Font.Font->GetMetrics(&FontMetrics);
+
+        float PixelPerEM = PointSize * (1.0f / 72.0f) * DPI;
+        float PixelPerDesignUnit = PixelPerEM / ((float)FontMetrics.designUnitsPerEm);
+
+        // Get glyph count
+        Font.GlyphCount = Font.Font->GetGlyphCount();
     }
 
     BOOL VSYNC = TRUE;
