@@ -19,6 +19,7 @@
     X(PFNGLTEXTUREPARAMETERIPROC,        glTextureParameteri        ) \
     X(PFNGLTEXTURESTORAGE2DPROC,         glTextureStorage2D         ) \
     X(PFNGLTEXTURESUBIMAGE2DPROC,        glTextureSubImage2D        ) \
+    X(PFNGLTEXIMAGE3DPROC,               glTexImage3D               ) \
     X(PFNGLDEBUGMESSAGECALLBACKPROC,     glDebugMessageCallback     ) \
     X(PFNGLCREATESHADERPROC,             glCreateShader             ) \
     X(PFNGLSHADERSOURCEPROC,             glShaderSource             ) \
@@ -26,7 +27,7 @@
     X(PFNGLCREATEPROGRAMPROC,            glCreateProgram            ) \
     X(PFNGLATTACHSHADERPROC,             glAttachShader             ) \
     X(PFNGLLINKPROGRAMPROC,              glLinkProgram              ) \
-    X(PFNGLDELETESHADERPROC,             glDeleteShader             )\
+    X(PFNGLDELETESHADERPROC,             glDeleteShader             ) \
     X(PFNGLGENVERTEXARRAYSPROC,          glGenVertexArrays          ) \
     X(PFNGLGENBUFFERSPROC,               glGenBuffers               ) \
     X(PFNGLBINDBUFFERPROC,               glBindBuffer               ) \
@@ -38,7 +39,12 @@
     X(PFNGLDELETEBUFFERSPROC,            glDeleteBuffers            ) \
     X(PFNGLDELETEPROGRAMPROC,            glDeleteProgram            ) \
     X(PFNGLUNIFORM1FPROC,                glUniform1f                ) \
-    X(PFNGLGETUNIFORMLOCATIONPROC,       glGetUniformLocation       )
+    X(PFNGLGETUNIFORMLOCATIONPROC,       glGetUniformLocation       ) \
+    X(PFNGLGENFRAMEBUFFERSPROC,          glGenFramebuffers          ) \
+    X(PFNGLBINDFRAMEBUFFERPROC,          glBindFramebuffer          ) \
+    X(PFNGLFRAMEBUFFERTEXTURE2DPROC,     glFramebufferTexture2D     ) \
+    X(PFNGLCHECKFRAMEBUFFERSTATUSPROC,   glCheckFramebufferStatus   ) \
+    X(PFNGLBLITFRAMEBUFFERPROC,          glBlitFramebuffer          )
 
 #define X(type, name) static type name;
 GL_FUNCTIONS(X)
@@ -209,7 +215,7 @@ Win32InitializeOpenGLContext(HDC DeviceContext)
 
         // X Macro to load OpenGL functions
 #define X(type, name) name = (type)wglGetProcAddress(#name); Assert(name);
-        GL_FUNCTIONS(X)
+    GL_FUNCTIONS(X);
 #undef X
 
         // Enable debug callback
