@@ -125,51 +125,47 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
 dwrite_state
 DWriteStateCreate(wchar_t *FontPath, float PointSize, float DPI, dwrite_font *Font)
 {
-    dwrite_state State = {};
+    dwrite_state State = {0};
 
     HRESULT Error = 0;
-    // Create factory
-    State.Factory = 0;
+    
+    // NOTE(Oskar): Initialize factory interface which provdes access to everything needed.
     Error = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown**)&State.Factory);
-    //DeferRelease(Factory);
     CheckPointer(Error, State.Factory, Assert(!"Factory"));
 
-    // Read font file
-    State.FontFile = 0;
+    // NOTE(Oskar): Set the DWrite font to use a specific file.
     Error = State.Factory->CreateFontFileReference(FontPath, 0, &State.FontFile);
-    // DeferRelease(State.FontFile);
     CheckPointer(Error, State.FontFile, Assert(!"FontFile"));
 
-    // Create font face
+    // NOTE(Oskar): Create a font face which refers to in-memory data representation of renderable font.
+    // This can work from different sources but we use a IDWriteFontFile. This implementation assumes truetype is used
+    // for more robust implemetnation this some code needs to check this.
     Error = State.Factory->CreateFontFace(DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &State.FontFile, 0, DWRITE_FONT_SIMULATIONS_NONE, &Font->Font);
     CheckPointer(Error, Font->Font, Assert(!"Font Face"));
 
-    // Font rendering params
-    State.DefaultRenderingParams = 0;
-    Error = State.Factory->CreateRenderingParams(&State.DefaultRenderingParams);
-    // DeferRelease(DefaultRenderingParams);
-    CheckPointer(Error, State.DefaultRenderingParams, Assert(!"Default Rendering Params"));
-
+    // NOTE(Oskar): In order to draw the individual glyphs we need to set some parameters.
+    // The defaults refer to system defaults on the machine whic can be edited from control panel.
     FLOAT Gamma = 1.0f;
-
-    // Custom rendering params
-    State.RenderingParams = 0;
+    Error = State.Factory->CreateRenderingParams(&State.DefaultRenderingParams);
+    CheckPointer(Error, State.DefaultRenderingParams, Assert(!"Default Rendering Params"));
     Error = State.Factory->CreateCustomRenderingParams(Gamma,
                                                        State.DefaultRenderingParams->GetEnhancedContrast(),
                                                        State.DefaultRenderingParams->GetClearTypeLevel(),
                                                        State.DefaultRenderingParams->GetPixelGeometry(),
                                                        DWRITE_RENDERING_MODE_NATURAL,
                                                        &State.RenderingParams);
-    // DeferRelease(RenderingParams);
     CheckPointer(Error, State.RenderingParams, Assert(!"Rendering Params"));
 
-    // GDI
+    // NOTE(Oskar): This implemetnation uses GDI in order to draw the glyphs. 
+    // Here we are getting an interface that provide some methods that allow us to get DirectWrite
+    // to work with GDI. Mainly this is uised to create a bitmap render target.
     State.DWriteGDIInterop = 0;
     Error = State.Factory->GetGdiInterop(&State.DWriteGDIInterop);
-    // DeferRelease(DWriteGDIInterop);
     CheckPointer(Error, State.DWriteGDIInterop, Assert(!"GDI Interop"));
 
-    // Get metrics
+    // NOTE(Oskar): Here we get font metrics that contains scaling information for converting
+    // design units into pixels as well as line spacing and various dimensions.
+    // This API assumes we know our DPI.
     State.FontMetrics = {};
     Font->Font->GetMetrics(&State.FontMetrics);
 
@@ -184,12 +180,18 @@ DWriteStateCreate(wchar_t *FontPath, float PointSize, float DPI, dwrite_font *Fo
     Assert((float) ((int)(State.RasterTargetX)) == State.RasterTargetX);
     Assert((float) ((int)(State.RasterTargetY)) == State.RasterTargetY);
 
-    // Get glyph count
+    // NOTE(Oskar): Tells us the total number of glyphs that the font can rasterize for us. 
     Font->GlyphCount = Font->Font->GetGlyphCount();
 
-    // Render target
-    State.RenderTarget = 0;
+    // NOTE(Oskar): Here we create an interface to the actual pixel data that draw operations will be 
+    // recorded to. 
+    // It is on us to make sure that everything we render onto this bitmap will actually fit and after
+    // rendering it is not dumb to check the bounding box of the glyph against the target to see that it
+    // actually fit.
     Error = State.DWriteGDIInterop->CreateBitmapRenderTarget(0, State.RasterTargetWidth, State.RasterTargetHeight, &State.RenderTarget);
+    
+    // NOTE(Oskar): This gives us a GDI based HDC that allows us to make GDI calls that render to the
+    // IDWriteBitmapRenderTarget buffer.
     State.DC = State.RenderTarget->GetMemoryDC();
 
     return State;
