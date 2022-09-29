@@ -39,12 +39,20 @@
     X(PFNGLDELETEBUFFERSPROC,            glDeleteBuffers            ) \
     X(PFNGLDELETEPROGRAMPROC,            glDeleteProgram            ) \
     X(PFNGLUNIFORM1FPROC,                glUniform1f                ) \
+    X(PFNGLUNIFORM1FVPROC,               glUniform1fv               ) \
+    X(PFNGLUNIFORMMATRIX3FVPROC,         glUniformMatrix3fv         ) \
     X(PFNGLGETUNIFORMLOCATIONPROC,       glGetUniformLocation       ) \
     X(PFNGLGENFRAMEBUFFERSPROC,          glGenFramebuffers          ) \
     X(PFNGLBINDFRAMEBUFFERPROC,          glBindFramebuffer          ) \
     X(PFNGLFRAMEBUFFERTEXTURE2DPROC,     glFramebufferTexture2D     ) \
     X(PFNGLCHECKFRAMEBUFFERSTATUSPROC,   glCheckFramebufferStatus   ) \
-    X(PFNGLBLITFRAMEBUFFERPROC,          glBlitFramebuffer          )
+    X(PFNGLBLITFRAMEBUFFERPROC,          glBlitFramebuffer          ) \
+    X(PFNGLBLENDCOLORPROC,               glBlendColor               ) \
+    X(PFNGLGETATTRIBLOCATIONPROC,        glGetAttribLocation        ) \
+    X(PFNGLACTIVETEXTUREPROC,            glActiveTexture            ) \
+    X(PFNGLPROGRAMUNIFORMMATRIX3FVPROC,  glProgramUniformMatrix3fv  ) \
+    X(PFNGLPROGRAMUNIFORM1FVPROC,        glProgramUniform1fv        ) \
+    X(PFNGLPROGRAMUNIFORM1IPROC,         glProgramUniform1i         )
 
 #define X(type, name) static type name;
 GL_FUNCTIONS(X)

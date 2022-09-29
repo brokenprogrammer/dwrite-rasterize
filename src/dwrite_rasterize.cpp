@@ -17,25 +17,48 @@
 #include "dwrite_util.cpp"
 #include "dwrite_opengl.cpp"
 
+#include "dwrite_text.h"
+#include "dwrite_text.cpp"
+
 #define L_WINDOW_CLASS_NAME L"window-class"
 
 char *VS = "\n"
     "#version 330 core\n"
     "in vec2 pos;\n"
+    "in vec3 tex_position;\n"
+    "\n"
+    "out vec3 uv;\n"
+    "\n"
+    "uniform mat3 pixel_to_normal;\n"
     "\n"
     "void main()\n"
     "{\n"
-    "   gl_Position = vec4(pos.x, pos.y, 0.0f, 1.0f);\n"
+    "   gl_Position.xy = (pixel_to_normal * vec3(pos, 1.f)).xy;\n"
+    "   gl_Position.z  = 0.f;\n"
+    "   gl_Position.w  = 1.f;\n"
+    "   uv = tex_position;\n"
     "}\n"
     "\n";
 
 char *FS = "\n"
     "#version 330 core\n"
-    "out vec4 color;\n"
+    "in vec3 uv;\n"
+    "\n"
+    "out vec4 mask;\n"
+    "\n"
+    "uniform sampler2DArray tex;\n"
+    "uniform float mask_value_table[7];\n"
     "\n"
     "void main()\n"
     "{\n"
-    "   color = vec4(0.5f, 0.5f, 0.2f, 1.0f);\n"
+    "   vec3 S = texture(tex, uv).rgb;\n"
+    "   int C0 = int(S.r*6 + 0.1); // + 0.1 just incase we have some small rounding taking us below the integer we should be hitting.\n"
+    "   int C1 = int(S.g*6 + 0.1);\n"
+    "   int C2 = int(S.b*6 + 0.1);\n"
+    "   mask.rgb = vec3(mask_value_table[C0], \n"
+    "       mask_value_table[C1],\n"
+    "       mask_value_table[C2]);\n"
+    "   mask.a = 1;\n"
     "}\n"
     "\n";
 
@@ -49,24 +72,163 @@ float DPI = 96.0f;
 int32_t WindowWidth = 800;
 int32_t WindowHeight = 600;
 
-struct glyph_metrics
-{
-    float OffsetX;
-    float OffsetY;
-    float Advance;
-    float XYW;
-    float XYH;
-    float UVW;
-    float UVH;
-};
+GLuint PixelToNormalLocation;
+GLuint UniformTextureLocation;
+GLuint UniformMaskValueTableLocation;
 
-struct dwrite_font
+GLuint AttribPosition;
+GLuint AttribTexturePosition;
+
+GLuint VShader;
+GLuint FShader;
+
+void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, float G, float B, float Alpha)
 {
-    IDWriteFontFace *Font;
-    GLuint Texture;
-    glyph_metrics *Metrics;
-    int32_t GlyphCount;
-};
+    int32_t Length = 0;
+    while (Text[Length] != 0)
+    {
+        Length += 1;
+    }
+    uint16_t *Indices = (uint16_t*)malloc(sizeof(uint16_t)*Length);
+
+    for (int32_t Index = 0; Index < Length; ++Index)
+    {
+        uint32_t Codepoint = (uint32_t)Text[Index];
+        Font.Font->GetGlyphIndices(&Codepoint, 1, &Indices[Index]);
+    }
+
+    int32_t FloatPerVertex = 5;
+    int32_t BytePerVertex = FloatPerVertex*sizeof(float);
+    int32_t VertexPerCharacter = 6;
+    int32_t TotalFloatCount = Length*VertexPerCharacter*FloatPerVertex;
+    float *Vertices = (float*)malloc(sizeof(float)*TotalFloatCount);
+
+    {
+        float LayoutX = (float)X;
+        float LayoutY = (float)Y;
+
+        float *Vertex = Vertices;
+        for (int32_t I = 0; I < Length; ++I)
+        {
+            uint16_t Index = Indices[I];
+            Assert(Index < Font.GlyphCount);
+
+            float IndexF = (float)(Index / 4);
+            float UVX = 0.5f * (float)((Index & 1));
+            float UVY = 0.5f * (float)((Index & 2) >> 1);
+            glyph_metrics Metrics = Font.Metrics[Index];
+
+            for (int32_t J = 0; J < VertexPerCharacter; ++J)
+            {
+                float GX = LayoutX + Metrics.OffsetX;
+                float GY = LayoutY + Metrics.OffsetY;
+
+                switch (J)
+                {
+                    case 0:
+                    {
+                        Vertex[0] = GX;
+                        Vertex[1] = GY;
+                        Vertex[2] = UVX;
+                        Vertex[3] = UVY;
+                    } break;
+
+                    case 1:
+                    case 3:
+                    {
+                        Vertex[0] = GX;
+                        Vertex[1] = GY + Metrics.XYH;
+                        Vertex[2] = UVX;
+                        Vertex[3] = UVY + Metrics.UVH;
+                    } break;
+
+                    case 2:
+                    case 4:
+                    {   
+                        Vertex[0] = GX + Metrics.XYW;
+                        Vertex[1] = GY;
+                        Vertex[2] = UVX + Metrics.UVW;
+                        Vertex[3] = UVY;
+                    } break;
+
+                    case 5:
+                    {
+                        Vertex[0] = GX + Metrics.XYW;
+                        Vertex[1] = GY + Metrics.XYH;
+                        Vertex[2] = UVX + Metrics.UVW;
+                        Vertex[3] = UVY + Metrics.UVH;
+                    } break;
+                }
+                Vertex[4] = IndexF;
+                Vertex += FloatPerVertex;
+            }
+
+            LayoutX += Metrics.Advance;
+        }
+    }
+
+    float V = R * 0.5f + G + B * 0.1875f;
+    float MaskValueTable[7];
+
+    static float CMaxTable[] = {
+        0.f,
+        0.380392157f,
+        0.600000000f,
+        0.749019608f,
+        0.854901961f,
+        0.937254902f,
+        1.f,
+    };
+    static float CMinTable[] = {
+        0.f,
+        0.166666667f,
+        0.333333333f,
+        0.500000000f,
+        0.666666667f,
+        0.833333333f,
+        1.f,
+    };
+
+    static float A = 0.839215686374509f; // 214/255
+    static float B1 = 1.266666666666667f; // 323/255
+    float L = (V - A)/(B1 - A);
+
+    MaskValueTable[0] = 0.0f;
+    for (int32_t Index = 1; Index <= 5; ++Index)
+    {
+        float CMax = CMaxTable[Index];
+        float CMin = CMinTable[Index];
+        float M = CMax + (CMin - CMax)*L;
+        if (M > CMax){
+            M = CMax;
+        }
+        if (M < CMin){
+            M = CMin;
+        }
+        MaskValueTable[Index] = M*Alpha;
+    }
+    MaskValueTable[6]= Alpha;
+
+    float Matrix[9];
+    Matrix[0] = 2.f/(float)WindowWidth;  Matrix[3] = 0.f;                        Matrix[6] = -1.f;
+    Matrix[1] = 0.f;                     Matrix[4] = -2.f/(float)WindowHeight;   Matrix[7] =  1.f,
+    Matrix[2] = 0.f;                     Matrix[5] = 0.f;                        Matrix[8] =  1.f,
+
+    // Perform drawing
+    glBlendColor(R, G, B, Alpha);
+    glBufferData(GL_ARRAY_BUFFER, TotalFloatCount * sizeof(float), Vertices, GL_DYNAMIC_DRAW);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, Font.Texture);
+    glProgramUniform1i(FShader, UniformTextureLocation, 0);
+    glProgramUniform1fv(FShader, UniformMaskValueTableLocation, 7, MaskValueTable);
+    glProgramUniformMatrix3fv(VShader, PixelToNormalLocation, 1, GL_FALSE, Matrix);
+    glVertexAttribPointer(AttribPosition, 2, GL_FLOAT, GL_FALSE, BytePerVertex, 0);
+    glVertexAttribPointer(AttribTexturePosition, 3, GL_FLOAT, GL_FALSE, BytePerVertex, (void*)(sizeof(float)*2));
+    glDrawArrays(GL_TRIANGLES, 0, VertexPerCharacter*Length);
+
+    free(Vertices);
+    free(Indices);
+}
 
 LRESULT 
 Win32WindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -154,31 +316,8 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         Assert(Status == GL_FRAMEBUFFER_COMPLETE);
     }
 
-    // NOTE(Oskar): VBO
-    GLuint VBO;
-    {
-        glCreateBuffers(1, &VBO);
-        glNamedBufferStorage(VBO, sizeof(vertices), vertices, 0);
-    }
-
-    // NOTE(Oskar): VAO
-    GLuint VAO;
-    {
-        glCreateVertexArrays(1, &VAO);
-
-        GLint BufferIndex = 0;
-        glVertexArrayVertexBuffer(VAO, BufferIndex, VBO, 0, 2 * sizeof(float));
-
-        GLint Pos = 0;
-        glVertexArrayAttribFormat(VAO, Pos, 2, GL_FLOAT, GL_FALSE, 0);
-        glVertexArrayAttribBinding(VAO, Pos, BufferIndex);
-        glEnableVertexArrayAttrib(VAO, Pos);
-    }
-
     // NOTE(Oskar): Shaders
     GLuint Pipeline;
-    GLuint VShader;
-    GLuint FShader;
     {
         VShader = glCreateShaderProgramv(GL_VERTEX_SHADER, 1, &VS);
         FShader = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &FS);
@@ -205,221 +344,39 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glGenProgramPipelines(1, &Pipeline);
         glUseProgramStages(Pipeline, GL_VERTEX_SHADER_BIT, VShader);
         glUseProgramStages(Pipeline, GL_FRAGMENT_SHADER_BIT, FShader);
+
+        glBindProgramPipeline(Pipeline);
+
+        PixelToNormalLocation         = glGetUniformLocation(VShader, "pixel_to_normal");
+        UniformTextureLocation        = glGetUniformLocation(FShader, "tex");
+        UniformMaskValueTableLocation = glGetUniformLocation(FShader, "mask_value_table");
+
+        AttribPosition        = glGetAttribLocation(VShader, "pos");
+        AttribTexturePosition = glGetAttribLocation(VShader, "tex_position");
     }
 
-    static wchar_t FontPath[] = L"C:\\Windows\\Fonts\\arial.ttf";
-    dwrite_font Font = {};
+    // NOTE(Oskar): VAO & VBO
+    GLuint VAO;
+    GLuint VBO;
     {
-        COLORREF BackColor = RGB(0, 0, 0);
-        COLORREF ForeColor = RGB(255, 255, 255);
+        glCreateBuffers(1, &VBO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        
+        glCreateVertexArrays(1, &VAO);
+        glBindVertexArray(VAO);
 
-        HRESULT Error = 0;
-
-        // Create factory
-        IDWriteFactory *Factory = 0;
-        Error = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown**)&Factory);
-        DeferRelease(Factory);
-        CheckPointer(Error, Factory, Assert(!"Factory"));
-
-        // Read font file
-        IDWriteFontFile *FontFile = 0;
-        Error = Factory->CreateFontFileReference(FontPath, 0, &FontFile);
-        DeferRelease(FontFile);
-        CheckPointer(Error, FontFile, Assert(!"FontFile"));
-
-        // Create font face
-        Error = Factory->CreateFontFace(DWRITE_FONT_FACE_TYPE_TRUETYPE, 1, &FontFile, 0, DWRITE_FONT_SIMULATIONS_NONE, &Font.Font);
-        CheckPointer(Error, Font.Font, Assert(!"Font Face"));
-
-        // Font rendering params
-        IDWriteRenderingParams *DefaultRenderingParams = 0;
-        Error = Factory->CreateRenderingParams(&DefaultRenderingParams);
-        DeferRelease(DefaultRenderingParams);
-        CheckPointer(Error, DefaultRenderingParams, Assert(!"Default Rendering Params"));
-
-        FLOAT Gamma = 1.0f;
-
-        // Custom rendering params
-        IDWriteRenderingParams *RenderingParams = 0;
-        Error = Factory->CreateCustomRenderingParams(Gamma,
-                                                     DefaultRenderingParams->GetEnhancedContrast(),
-                                                     DefaultRenderingParams->GetClearTypeLevel(),
-                                                     DefaultRenderingParams->GetPixelGeometry(),
-                                                     DWRITE_RENDERING_MODE_NATURAL,
-                                                     &RenderingParams);
-        DeferRelease(RenderingParams);
-        CheckPointer(Error, RenderingParams, Assert(!"Rendering Params"));
-
-        // GDI
-        IDWriteGdiInterop *DWriteGDIInterop = 0;
-        Error = Factory->GetGdiInterop(&DWriteGDIInterop);
-        DeferRelease(DWriteGDIInterop);
-        CheckPointer(Error, DWriteGDIInterop, Assert(!"GDI Interop"));
-
-        // Get metrics
-        DWRITE_FONT_METRICS FontMetrics = {};
-        Font.Font->GetMetrics(&FontMetrics);
-
-        float PixelPerEM = PointSize * (1.0f / 72.0f) * DPI;
-        float PixelPerDesignUnit = PixelPerEM / ((float)FontMetrics.designUnitsPerEm);
-
-        int32_t RasterTargetWidth  = (int32_t)(8.0f*((float)FontMetrics.capHeight)*PixelPerDesignUnit);
-        int32_t RasterTargetHeight = (int32_t)(8.0f*((float)FontMetrics.capHeight)*PixelPerDesignUnit);
-        float RasterTargetX = (float)(RasterTargetWidth / 2);
-        float RasterTargetY = (float)(RasterTargetHeight / 2);
-
-        Assert((float) ((int)(RasterTargetX)) == RasterTargetX);
-        Assert((float) ((int)(RasterTargetY)) == RasterTargetY);
-
-        // Get glyph count
-        Font.GlyphCount = Font.Font->GetGlyphCount();
-
-        // Render target
-        IDWriteBitmapRenderTarget *RenderTarget = 0;
-        Error = DWriteGDIInterop->CreateBitmapRenderTarget(0, RasterTargetWidth, RasterTargetHeight, &RenderTarget);
-        HDC DC = RenderTarget->GetMemoryDC();
-
-        // Clear
-        {
-            HGDIOBJ Original = SelectObject(DC, GetStockObject(DC_PEN));
-            SetDCPenColor(DC, BackColor);
-            SelectObject(DC, GetStockObject(DC_BRUSH));
-            SetDCBrushColor(DC, BackColor);
-            Rectangle(DC, 0, 0, RasterTargetWidth, RasterTargetHeight);
-            SelectObject(DC, Original);
-        }
-
-        // Allocate Atlas
-        int32_t AtlasWidth  = 4 * (int32_t)(((float)FontMetrics.capHeight)*PixelPerDesignUnit);
-        int32_t AtlasHeight = 4 * (int32_t)(((float)FontMetrics.capHeight)*PixelPerDesignUnit);
-        if (AtlasWidth < 16)
-        {
-            AtlasWidth = 16;
-        }
-        else
-        {
-            AtlasWidth = NextPowerOfTwo(AtlasWidth);
-        }
-
-        if (AtlasHeight < 256)
-        {
-            AtlasWidth = 256;
-        }
-        else
-        {
-            AtlasHeight = NextPowerOfTwo(AtlasHeight);
-        }
-
-        int32_t AtlasCount = (Font.GlyphCount + 3) / 4;
-        int32_t AtlasSliceSize = AtlasWidth * AtlasHeight * 3;
-        int32_t AtlasMemorySize = AtlasSliceSize * AtlasCount;
-        uint8_t *AtlasMemory = (uint8_t *)malloc(AtlasMemorySize);
-        memset(AtlasMemory, 0, AtlasMemorySize);
-
-        // Allocate metrics
-        Font.Metrics = (glyph_metrics *)malloc(sizeof(glyph_metrics) * Font.GlyphCount);
-        memset(Font.Metrics, 0, sizeof(glyph_metrics) * Font.GlyphCount);
-
-        // Populate atlas and metrics
-        for (uint16_t GlyphIndex = 0; GlyphIndex < Font.GlyphCount; ++GlyphIndex)
-        {
-            // Render glyph into target
-            DWRITE_GLYPH_RUN GlyphRun = {};
-            GlyphRun.fontFace = Font.Font;
-            GlyphRun.fontEmSize = PixelPerEM;
-            GlyphRun.glyphCount = 1;
-            GlyphRun.glyphIndices = &GlyphIndex;
-            RECT BoundingBox = {0};
-            Error = RenderTarget->DrawGlyphRun(RasterTargetX, RasterTargetY,
-                                                DWRITE_MEASURING_MODE_NATURAL, 
-                                                &GlyphRun, RenderingParams,
-                                                RGB(255, 255, 255), &BoundingBox);
-            Check(Error, continue);
-
-            Assert(0 <= BoundingBox.left);
-            Assert(0 <= BoundingBox.top);
-            Assert(BoundingBox.right <= RasterTargetWidth);
-            Assert(BoundingBox.bottom <= RasterTargetHeight);
-
-            // Compute glyph metrics
-            DWRITE_GLYPH_METRICS GlyphMetrics = {};
-            Error = Font.Font->GetDesignGlyphMetrics(&GlyphIndex, 1, &GlyphMetrics, false);
-            Check(Error, continue);
-
-            int32_t TextureWidth = BoundingBox.right - BoundingBox.left;
-            int32_t TextureHeight = BoundingBox.bottom - BoundingBox.top;
-
-            Font.Metrics[GlyphIndex].OffsetX = (float)BoundingBox.left - RasterTargetX;
-            Font.Metrics[GlyphIndex].OffsetY = (float)BoundingBox.top  - RasterTargetY;
-            Font.Metrics[GlyphIndex].Advance = (float)RoundUp(((float)GlyphMetrics.advanceWidth) * PixelPerDesignUnit);
-            Font.Metrics[GlyphIndex].XYW     = TextureWidth;
-            Font.Metrics[GlyphIndex].XYH     = TextureHeight;
-            Font.Metrics[GlyphIndex].UVW     = (float)TextureWidth / (float)AtlasWidth;
-            Font.Metrics[GlyphIndex].UVH     = (float)TextureHeight / (float)AtlasHeight;
-            
-            // Get Bitmap
-            HBITMAP Bitmap = (HBITMAP)GetCurrentObject(DC, OBJ_BITMAP);
-            DIBSECTION DIB = {};
-            GetObject(Bitmap, sizeof(DIB), &DIB);
-
-            // Blit bitmap to atlas
-            int32_t XSliceOffset = (3 * AtlasWidth / 2) * (GlyphIndex & 1);
-            int32_t YSliceOffset = (3 * AtlasWidth * AtlasHeight / 2) * ((GlyphIndex & 2) >> 1);
-            uint8_t *AtlasSlice = AtlasMemory + AtlasSliceSize * (GlyphIndex / 4) + XSliceOffset + YSliceOffset;
-            {
-                Assert(DIB.dsBm.bmBitsPixel == 32);
-
-                int32_t InPitch = DIB.dsBm.bmWidthBytes;
-                int32_t OutPitch = AtlasWidth * 3;
-                uint8_t *InLine = (uint8_t *)DIB.dsBm.bmBits + BoundingBox.left * 4 + BoundingBox.top * InPitch;
-                uint8_t *OutLine = AtlasSlice;
-                for (int32_t Y = 0; Y < TextureHeight; ++Y)
-                {
-                    uint8_t *InPixel = InLine;
-                    uint8_t *OutPixel = OutLine;
-                    for (int32_t X = 0; X < TextureWidth; ++X)
-                    {
-                        OutPixel[0] = InPixel[2];
-                        OutPixel[1] = InPixel[1];
-                        OutPixel[2] = InPixel[0];
-                        InPixel += 4;
-                        OutPixel += 3;
-                    }
-                    InLine += InPitch;
-                    OutLine += OutPitch;
-                }
-            }
-
-            // Clear render target
-            {
-                HGDIOBJ Original = SelectObject(DC, GetStockObject(DC_PEN));
-                SetDCPenColor(DC, BackColor);
-                SelectObject(DC, GetStockObject(DC_BRUSH));
-                SetDCBrushColor(DC, BackColor);
-                Rectangle(DC,
-                          BoundingBox.left, BoundingBox.top,
-                          BoundingBox.right, BoundingBox.bottom);
-                SelectObject(DC, Original);
-            }
-        }
-
-        // Create GPU atlas out of the generated CPU atlas.
-        glGenTextures(1, &Font.Texture);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, Font.Texture);
-        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB, AtlasWidth, AtlasHeight, AtlasCount, 0, GL_RGB, GL_UNSIGNED_BYTE, AtlasMemory);
-
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        free(AtlasMemory);
-        AtlasMemory = 0;
+        glEnableVertexAttribArray(AttribPosition);
+        glEnableVertexAttribArray(AttribTexturePosition);
     }
 
+    static wchar_t FontPath[] = L"C:\\Windows\\Fonts\\comic.ttf";
+    dwrite_font Font = BakeDWriteFont(FontPath, PointSize, DPI);
+    
     BOOL VSYNC = TRUE;
     wglSwapIntervalEXT(VSYNC ? 1 : 0);
     ShowWindow(Window, SW_SHOWDEFAULT);
+    
+    glViewport(0, 0, WindowWidth, WindowHeight);
 
     for (;;)
     {
@@ -432,13 +389,10 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
 
         glBindFramebuffer(GL_FRAMEBUFFER, Framebuffer);
 
-        glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        // NOTE(Oskar): Use shaders
-        glBindProgramPipeline(Pipeline);
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        RenderString(Font, "Testar font rendering.", 300, 60, 1.0f, 1.0f, 1.0f, 1.0f);   
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, Framebuffer);
