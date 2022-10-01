@@ -82,20 +82,67 @@ GLuint AttribTexturePosition;
 GLuint VShader;
 GLuint FShader;
 
+// NOTE(Oskar): Thanks to: https://nullprogram.com/blog/2017/10/06/#what-is-utf-8
+void *
+utf8_decode(void *buf, uint32_t *c, int *e)
+{
+    static const char lengths[] = {
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 3, 3, 4, 0
+    };
+    static const int masks[]  = {0x00, 0x7f, 0x1f, 0x0f, 0x07};
+    static const uint32_t mins[] = {4194304, 0, 128, 2048, 65536};
+    static const int shiftc[] = {0, 18, 12, 6, 0};
+    static const int shifte[] = {0, 6, 4, 2, 0};
+
+    unsigned char *s = (unsigned char *)buf;
+    int len = lengths[s[0] >> 3];
+
+    /* Compute the pointer to the next character early so that the next
+     * iteration can start working on the next character. Neither Clang
+     * nor GCC figure out this reordering on their own.
+     */
+    unsigned char *next = s + len + !len;
+
+    /* Assume a four-byte character and load four bytes. Unused bits are
+     * shifted out.
+     */
+    *c  = (uint32_t)(s[0] & masks[len]) << 18;
+    *c |= (uint32_t)(s[1] & 0x3f) << 12;
+    *c |= (uint32_t)(s[2] & 0x3f) <<  6;
+    *c |= (uint32_t)(s[3] & 0x3f) <<  0;
+    *c >>= shiftc[len];
+
+    /* Accumulate the various error conditions. */
+    *e  = (*c < mins[len]) << 6;
+    *e |= ((*c >> 11) == 0x1b) << 7;  // surrogate half?
+    *e |= (s[1] & 0xc0) >> 2;
+    *e |= (s[2] & 0xc0) >> 4;
+    *e |= (s[3]       ) >> 6;
+    *e ^= 0x2a; // top two bits of each tail byte correct?
+    *e >>= shifte[len];
+
+    return next;
+}
+
 void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, float G, float B, float Alpha)
 {
-    int32_t Length = 0;
-    while (Text[Length] != 0)
-    {
-        Length += 1;
-    }
+    int32_t Length = StringLength(Text);
     uint16_t *Indices = (uint16_t*)malloc(sizeof(uint16_t)*Length);
 
-    for (int32_t Index = 0; Index < Length; ++Index)
+    char *TextPointer = Text;
+    int32_t PointerIndex = 0;
+    int32_t PointerLength = 0;
+    while (StringLength(TextPointer) > 0)
     {
-        uint32_t Codepoint = (uint32_t)Text[Index];
-        Font.Font->GetGlyphIndices(&Codepoint, 1, &Indices[Index]);
+        // TODO(Oskar): Check error code.
+        uint32_t Codepoint;
+        int Error;
+        TextPointer = (char *)utf8_decode(TextPointer, &Codepoint, &Error);
+        Font.Font->GetGlyphIndices(&Codepoint, 1, &Indices[PointerIndex++]);
+        PointerLength++;
     }
+    Length = PointerLength;
 
     int32_t FloatPerVertex = 5;
     int32_t BytePerVertex = FloatPerVertex*sizeof(float);
@@ -392,7 +439,7 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        RenderString(Font, "Testar font rendering.", 300, 60, 1.0f, 1.0f, 1.0f, 1.0f);   
+        RenderString(Font, "Svenska bokstäver ÅÄÖ.", 300, 60, 1.0f, 1.0f, 1.0f, 1.0f);   
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, Framebuffer);
