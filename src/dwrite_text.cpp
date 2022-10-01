@@ -9,12 +9,18 @@ ClearDC(HDC DC, COLORREF Color, uint32_t L, uint32_t T, uint32_t R, uint32_t B)
     SelectObject(DC, Original);
 }
 
+// NOTE(Oskar): This function builds a font atlas in memory. The atlas based on multiple slices where each slice
+// can fit 4 glyphs each. There is no rect packing or magic hapening but instead just a chunk of memory
+// allocated based on the cap height of the font.
+// We proceed by looping through all the glyphs within the font and render them to the RenderTarget we've 
+// prepared earlier also calculating the font metrics that we need later for rendering.
+// Finally we blit the glyph manually from the rendertarget onto the atlas.
 font_atlas
 BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
 {
     font_atlas Atlas = {};
 
-    // Allocate Atlas
+    // NOTE(Oskar): Allocate Atlas based on slice width and height.
     Atlas.Width  = 4 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
     Atlas.Height = 4 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
     if (Atlas.Width < 16)
@@ -41,14 +47,13 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
     Atlas.Memory = (uint8_t *)malloc(AtlasMemorySize);
     memset(Atlas.Memory, 0, AtlasMemorySize);
 
-    // Allocate metrics
+    // NOTE(Oskar): Allocate font metrics based on the number of glyphs available.
     Font->Metrics = (glyph_metrics *)malloc(sizeof(glyph_metrics) * Font->GlyphCount);
     memset(Font->Metrics, 0, sizeof(glyph_metrics) * Font->GlyphCount);
 
-    // Populate atlas and metrics
     for (uint16_t GlyphIndex = 0; GlyphIndex < Font->GlyphCount; ++GlyphIndex)
     {
-        // Render glyph into target
+        // NOTE(Oskar): Render glyph into RenderTarget
         DWRITE_GLYPH_RUN GlyphRun = {};
         GlyphRun.fontFace = Font->Font;
         GlyphRun.fontEmSize = State->PixelPerEM;
@@ -66,7 +71,7 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
         Assert(BoundingBox.right  <= State->RasterTargetWidth);
         Assert(BoundingBox.bottom <= State->RasterTargetHeight);
 
-        // Compute glyph metrics
+        // NOTE(Oskar): Compute the glyph metrics and store them.
         DWRITE_GLYPH_METRICS GlyphMetrics = {};
         Error = Font->Font->GetDesignGlyphMetrics(&GlyphIndex, 1, &GlyphMetrics, false);
         Check(Error, continue);
@@ -82,12 +87,11 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
         Font->Metrics[GlyphIndex].UVW     = (float)TextureWidth / (float)Atlas.Width;
         Font->Metrics[GlyphIndex].UVH     = (float)TextureHeight / (float)Atlas.Height;
         
-        // Get Bitmap
+        // NOTE(Oskar): Get Bitmap from RenderTaget and blit the bitmap to the allocated atlas manually.
         HBITMAP Bitmap = (HBITMAP)GetCurrentObject(State->DC, OBJ_BITMAP);
         DIBSECTION DIB = {};
         GetObject(Bitmap, sizeof(DIB), &DIB);
 
-        // Blit bitmap to atlas
         int32_t XSliceOffset = (3 * Atlas.Width / 2) * (GlyphIndex & 1);
         int32_t YSliceOffset = (3 * Atlas.Width * Atlas.Height / 2) * ((GlyphIndex & 2) >> 1);
         uint8_t *AtlasSlice = Atlas.Memory + AtlasSliceSize * (GlyphIndex / 4) + XSliceOffset + YSliceOffset;
@@ -115,7 +119,7 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
             }
         }
 
-        // Clear render target
+        // NOTE(Oskar): Clear render target
         ClearDC(State->DC, BackColor, BoundingBox.left, BoundingBox.top, BoundingBox.right, BoundingBox.bottom); 
     }
 
@@ -169,6 +173,18 @@ DWriteStateCreate(wchar_t *FontPath, float PointSize, float DPI, dwrite_font *Fo
     State.FontMetrics = {};
     Font->Font->GetMetrics(&State.FontMetrics);
 
+    // NOTE(Oskar): The font metrics are specified in Design units. This means that we need to convert
+    // it into pixel units.
+    // Important keywords to understand the process:
+    //  Design Unit      - Abstract unit independent of screen or text size and varies in resolution between fonts.
+    //  Em               - Unit that scales relative to the visual size of the text.
+    //  Point            - Fixed unit of physical length. This is 1 / 72 Inch
+    //  Design Unit / Em - The scale of a font's design unit. This exists within the Font Metrics.
+    //  Point / Em       - The point size of text. For example 12pt text is it 12 Point / Em.
+    //  Inch / Point     - Always 1 / 72
+    //  Pixel / Inch     - Also known as DPI. Default is 96 if your application is not DPI aware.
+    // IMPORTANT: This is just information relevant to this Microsoft API and it is not guaranteed to be
+    // translatable to other APIs.
     State.PixelPerEM = PointSize * (1.0f / 72.0f) * DPI;
     State.PixelPerDesignUnit = State.PixelPerEM / ((float)State.FontMetrics.designUnitsPerEm);
 
@@ -214,12 +230,10 @@ BakeDWriteFont(wchar_t *FontPath, float PointSize, float DPI)
 
     dwrite_state State = DWriteStateCreate(FontPath, PointSize, DPI, &Font);
 
-    // Clear
     ClearDC(State.DC, BackColor, 0, 0, State.RasterTargetWidth, State.RasterTargetHeight);
-
     font_atlas Atlas = BuildFontAtlas(&Font, &State);
 
-    // Create GPU atlas out of the generated CPU atlas.
+    // NOTE(Oskar): Create an OpenGL texture based on the texture atlas.
     glGenTextures(1, &Font.Texture);
     glBindTexture(GL_TEXTURE_2D_ARRAY, Font.Texture);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB, Atlas.Width, Atlas.Height, Atlas.Count, 0, GL_RGB, GL_UNSIGNED_BYTE, Atlas.Memory);
