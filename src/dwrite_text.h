@@ -36,6 +36,8 @@ struct dwrite_font
     GLuint Texture;
     glyph_metrics *Metrics;
     int32_t GlyphCount;
+    int32_t TextureWidth;
+    int32_t TextureHeight;
 };
 
 struct font_atlas

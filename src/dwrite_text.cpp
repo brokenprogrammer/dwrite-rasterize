@@ -21,29 +21,13 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
     font_atlas Atlas = {};
 
     // NOTE(Oskar): Allocate Atlas based on slice width and height.
-    Atlas.Width  = 4 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
-    Atlas.Height = 4 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
-    if (Atlas.Width < 16)
-    {
-        Atlas.Width = 16;
-    }
-    else
-    {
-        Atlas.Width = NextPowerOfTwo(Atlas.Width);
-    }
+    int32_t GlyphSize = 8 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
+    int32_t QuarterCount = Font->GlyphCount / 4;
+    Atlas.Width  = 25 * GlyphSize;
+    Atlas.Height = 100 * GlyphSize;
 
-    if (Atlas.Height < 256)
-    {
-        Atlas.Width = 256;
-    }
-    else
-    {
-        Atlas.Height = NextPowerOfTwo(Atlas.Height);
-    }
-
-    Atlas.Count = (Font->GlyphCount + 3) / 4;
-    int32_t AtlasSliceSize = Atlas.Width * Atlas.Height * 3;
-    int32_t AtlasMemorySize = AtlasSliceSize * Atlas.Count;
+    Atlas.Count = Font->GlyphCount;
+    uint32_t AtlasMemorySize = (Atlas.Width * Atlas.Height * 3);
     Atlas.Memory = (uint8_t *)malloc(AtlasMemorySize);
     memset(Atlas.Memory, 0, AtlasMemorySize);
 
@@ -51,6 +35,8 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
     Font->Metrics = (glyph_metrics *)malloc(sizeof(glyph_metrics) * Font->GlyphCount);
     memset(Font->Metrics, 0, sizeof(glyph_metrics) * Font->GlyphCount);
 
+    uint32_t Column = 0;
+    uint32_t Row = 0;
     for (uint16_t GlyphIndex = 0; GlyphIndex < Font->GlyphCount; ++GlyphIndex)
     {
         // NOTE(Oskar): Render glyph into RenderTarget
@@ -84,17 +70,17 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
         Font->Metrics[GlyphIndex].Advance = (float)RoundUp(((float)GlyphMetrics.advanceWidth) * State->PixelPerDesignUnit);
         Font->Metrics[GlyphIndex].XYW     = TextureWidth;
         Font->Metrics[GlyphIndex].XYH     = TextureHeight;
-        Font->Metrics[GlyphIndex].UVW     = (float)TextureWidth / (float)Atlas.Width;
-        Font->Metrics[GlyphIndex].UVH     = (float)TextureHeight / (float)Atlas.Height;
-        
+        Font->Metrics[GlyphIndex].UVW     = Column * GlyphSize;
+        Font->Metrics[GlyphIndex].UVH     = Row * GlyphSize;
+
         // NOTE(Oskar): Get Bitmap from RenderTaget and blit the bitmap to the allocated atlas manually.
         HBITMAP Bitmap = (HBITMAP)GetCurrentObject(State->DC, OBJ_BITMAP);
         DIBSECTION DIB = {};
         GetObject(Bitmap, sizeof(DIB), &DIB);
 
-        int32_t XSliceOffset = (3 * Atlas.Width / 2) * (GlyphIndex & 1);
-        int32_t YSliceOffset = (3 * Atlas.Width * Atlas.Height / 2) * ((GlyphIndex & 2) >> 1);
-        uint8_t *AtlasSlice = Atlas.Memory + AtlasSliceSize * (GlyphIndex / 4) + XSliceOffset + YSliceOffset;
+        int32_t XSliceOffset = (Column);
+        int32_t YSliceOffset = (Row);
+        uint8_t *AtlasSlice = Atlas.Memory + ((((Row * Atlas.Width) + Column) * GlyphSize) * 3);
         {
             Assert(DIB.dsBm.bmBitsPixel == 32);
 
@@ -117,6 +103,13 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
                 InLine += InPitch;
                 OutLine += OutPitch;
             }
+        }
+
+        Column++;
+        if ((Column * GlyphSize) >= Atlas.Width)
+        {
+            Column = 0;
+            Row++;
         }
 
         // NOTE(Oskar): Clear render target
@@ -235,13 +228,18 @@ BakeDWriteFont(wchar_t *FontPath, float PointSize, float DPI)
 
     // NOTE(Oskar): Create an OpenGL texture based on the texture atlas.
     glGenTextures(1, &Font.Texture);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, Font.Texture);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB, Atlas.Width, Atlas.Height, Atlas.Count, 0, GL_RGB, GL_UNSIGNED_BYTE, Atlas.Memory);
+    glBindTexture(GL_TEXTURE_2D, Font.Texture);
+    // glTexImage3D(GL_TEXTURE_2D, 0, GL_RGB, Atlas.Width, Atlas.Height, Atlas.Count, 0, GL_RGB, GL_UNSIGNED_BYTE, Atlas.Memory);
+    glTextureStorage2D(Font.Texture, 1, GL_RGB8, Atlas.Width, Atlas.Height);
+    glTextureSubImage2D(Font.Texture, 0, 0, 0, Atlas.Width, Atlas.Height, GL_RGB, GL_UNSIGNED_BYTE, Atlas.Memory);
 
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    Font.TextureWidth = Atlas.Width;
+    Font.TextureHeight = Atlas.Height;
+
+    glTextureParameteri(Font.Texture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(Font.Texture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(Font.Texture, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(Font.Texture, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     free(Atlas.Memory);
     Atlas.Memory = 0;

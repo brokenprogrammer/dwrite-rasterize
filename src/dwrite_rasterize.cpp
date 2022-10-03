@@ -25,9 +25,9 @@
 char *VS = "\n"
     "#version 330 core\n"
     "in vec2 pos;\n"
-    "in vec3 tex_position;\n"
+    "in vec2 tex_position;\n"
     "\n"
-    "out vec3 uv;\n"
+    "out vec2 uv;\n"
     "\n"
     "uniform mat3 pixel_to_normal;\n"
     "\n"
@@ -42,11 +42,11 @@ char *VS = "\n"
 
 char *FS = "\n"
     "#version 330 core\n"
-    "in vec3 uv;\n"
+    "in vec2 uv;\n"
     "\n"
     "out vec4 mask;\n"
     "\n"
-    "uniform sampler2DArray tex;\n"
+    "uniform sampler2D tex;\n"
     "uniform float mask_value_table[7];\n"
     "\n"
     "void main()\n"
@@ -144,7 +144,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
     }
     Length = PointerLength;
 
-    int32_t FloatPerVertex = 5;
+    int32_t FloatPerVertex = 4;
     int32_t BytePerVertex = FloatPerVertex*sizeof(float);
     int32_t VertexPerCharacter = 6;
     int32_t TotalFloatCount = Length*VertexPerCharacter*FloatPerVertex;
@@ -159,11 +159,10 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
         {
             uint16_t Index = Indices[I];
             Assert(Index < Font.GlyphCount);
-
-            float IndexF = (float)(Index / 4);
-            float UVX = 0.5f * (float)((Index & 1));
-            float UVY = 0.5f * (float)((Index & 2) >> 1);
+            
             glyph_metrics Metrics = Font.Metrics[Index];
+            float UVX = Metrics.UVW;
+            float UVY = Metrics.UVH;
 
             for (int32_t J = 0; J < VertexPerCharacter; ++J)
             {
@@ -186,7 +185,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                         Vertex[0] = GX;
                         Vertex[1] = GY + Metrics.XYH;
                         Vertex[2] = UVX;
-                        Vertex[3] = UVY + Metrics.UVH;
+                        Vertex[3] = UVY;
                     } break;
 
                     case 2:
@@ -194,7 +193,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     {   
                         Vertex[0] = GX + Metrics.XYW;
                         Vertex[1] = GY;
-                        Vertex[2] = UVX + Metrics.UVW;
+                        Vertex[2] = UVX;
                         Vertex[3] = UVY;
                     } break;
 
@@ -202,11 +201,10 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     {
                         Vertex[0] = GX + Metrics.XYW;
                         Vertex[1] = GY + Metrics.XYH;
-                        Vertex[2] = UVX + Metrics.UVW;
-                        Vertex[3] = UVY + Metrics.UVH;
+                        Vertex[2] = UVX;
+                        Vertex[3] = UVY;
                     } break;
                 }
-                Vertex[4] = IndexF;
                 Vertex += FloatPerVertex;
             }
 
@@ -265,12 +263,12 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
     glBlendColor(R, G, B, Alpha);
     glBufferData(GL_ARRAY_BUFFER, TotalFloatCount * sizeof(float), Vertices, GL_DYNAMIC_DRAW);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, Font.Texture);
+    glBindTexture(GL_TEXTURE_2D, Font.Texture);
     glProgramUniform1i(FShader, UniformTextureLocation, 0);
     glProgramUniform1fv(FShader, UniformMaskValueTableLocation, 7, MaskValueTable);
     glProgramUniformMatrix3fv(VShader, PixelToNormalLocation, 1, GL_FALSE, Matrix);
     glVertexAttribPointer(AttribPosition, 2, GL_FLOAT, GL_FALSE, BytePerVertex, 0);
-    glVertexAttribPointer(AttribTexturePosition, 3, GL_FLOAT, GL_FALSE, BytePerVertex, (void*)(sizeof(float)*2));
+    glVertexAttribPointer(AttribTexturePosition, 2, GL_FLOAT, GL_FALSE, BytePerVertex, (void*)(sizeof(float)*2));
     glDrawArrays(GL_TRIANGLES, 0, VertexPerCharacter*Length);
 
     free(Vertices);
@@ -439,7 +437,7 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        RenderString(Font, "Svenska bokstäver ÅÄÖ.", 300, 60, 1.0f, 1.0f, 1.0f, 1.0f);   
+        RenderString(Font, "Svenska bokstäver ÅÄÖ.", 300, 60, 0.5f, 0.0f, 1.0f, 1.0f);   
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, Framebuffer);
