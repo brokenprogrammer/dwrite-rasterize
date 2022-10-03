@@ -70,10 +70,10 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
         Font->Metrics[GlyphIndex].Advance = (float)RoundUp(((float)GlyphMetrics.advanceWidth) * State->PixelPerDesignUnit);
         Font->Metrics[GlyphIndex].XYW     = TextureWidth;
         Font->Metrics[GlyphIndex].XYH     = TextureHeight;
-        Font->Metrics[GlyphIndex].UVX     = (Column * GlyphSize);
-        Font->Metrics[GlyphIndex].UVY     = (Row * GlyphSize);
-        Font->Metrics[GlyphIndex].UVW     = GlyphSize;
-        Font->Metrics[GlyphIndex].UVH     = GlyphSize;
+        Font->Metrics[GlyphIndex].UVX     = ((float)(Column * GlyphSize)) / Atlas.Width;
+        Font->Metrics[GlyphIndex].UVY     = ((float)(Row * GlyphSize)) / Atlas.Height;
+        Font->Metrics[GlyphIndex].UVW     = (float)TextureWidth / Atlas.Width;
+        Font->Metrics[GlyphIndex].UVH     = (float)TextureHeight / Atlas.Height;
 
         // NOTE(Oskar): Get Bitmap from RenderTaget and blit the bitmap to the allocated atlas manually.
         HBITMAP Bitmap = (HBITMAP)GetCurrentObject(State->DC, OBJ_BITMAP);
@@ -234,9 +234,6 @@ BakeDWriteFont(wchar_t *FontPath, float PointSize, float DPI)
     // glTexImage3D(GL_TEXTURE_2D, 0, GL_RGB, Atlas.Width, Atlas.Height, Atlas.Count, 0, GL_RGB, GL_UNSIGNED_BYTE, Atlas.Memory);
     glTextureStorage2D(Font.Texture, 1, GL_RGB8, Atlas.Width, Atlas.Height);
     glTextureSubImage2D(Font.Texture, 0, 0, 0, Atlas.Width, Atlas.Height, GL_RGB, GL_UNSIGNED_BYTE, Atlas.Memory);
-
-    Font.TextureWidth = Atlas.Width;
-    Font.TextureHeight = Atlas.Height;
 
     glTextureParameteri(Font.Texture, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTextureParameteri(Font.Texture, GL_TEXTURE_MAG_FILTER, GL_NEAREST);

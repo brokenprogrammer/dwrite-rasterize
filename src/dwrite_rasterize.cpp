@@ -161,8 +161,8 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
             Assert(Index < Font.GlyphCount);
 
             glyph_metrics Metrics = Font.Metrics[Index];
-            float UVX = Metrics.UVX / Font.TextureWidth;
-            float UVY = Metrics.UVY / Font.TextureHeight;
+            float UVX = Metrics.UVX;
+            float UVY = Metrics.UVY;
             for (int32_t J = 0; J < VertexPerCharacter; ++J)
             {
                 float GX = LayoutX + Metrics.OffsetX;
@@ -184,7 +184,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                         Vertex[0] = GX;
                         Vertex[1] = GY + Metrics.XYH;
                         Vertex[2] = UVX;
-                        Vertex[3] = UVY + (Metrics.UVH / Font.TextureHeight);
+                        Vertex[3] = UVY + Metrics.UVH;
                     } break;
 
                     case 2:
@@ -192,7 +192,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     {   
                         Vertex[0] = GX + Metrics.XYW;
                         Vertex[1] = GY;
-                        Vertex[2] = UVX + (Metrics.UVW / Font.TextureWidth);
+                        Vertex[2] = UVX + Metrics.UVW;
                         Vertex[3] = UVY;
                     } break;
 
@@ -200,8 +200,8 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     {
                         Vertex[0] = GX + Metrics.XYW;
                         Vertex[1] = GY + Metrics.XYH;
-                        Vertex[2] = UVX + (Metrics.UVW / Font.TextureWidth);
-                        Vertex[3] = UVY + (Metrics.UVH / Font.TextureHeight);
+                        Vertex[2] = UVX + Metrics.UVW;
+                        Vertex[3] = UVY + Metrics.UVH;
                     } break;
                 }
                 Vertex += FloatPerVertex;
@@ -436,7 +436,7 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        RenderString(Font, "Svenska bokstäver ÅÄÖ.", 300, 60, 0.5f, 0.0f, 1.0f, 1.0f);   
+        RenderString(Font, "Svenska bokstäver ÅÄÖ.", 300, 60, 1.0f, 1.0f, 1.0f, 1.0f);   
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, Framebuffer);
