@@ -5,6 +5,8 @@ struct glyph_metrics
     float Advance;
     float XYW;
     float XYH;
+    float UVX;
+    float UVY;
     float UVW;
     float UVH;
 };

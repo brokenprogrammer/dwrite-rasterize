@@ -159,11 +159,10 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
         {
             uint16_t Index = Indices[I];
             Assert(Index < Font.GlyphCount);
-            
-            glyph_metrics Metrics = Font.Metrics[Index];
-            float UVX = Metrics.UVW;
-            float UVY = Metrics.UVH;
 
+            glyph_metrics Metrics = Font.Metrics[Index];
+            float UVX = Metrics.UVX / Font.TextureWidth;
+            float UVY = Metrics.UVY / Font.TextureHeight;
             for (int32_t J = 0; J < VertexPerCharacter; ++J)
             {
                 float GX = LayoutX + Metrics.OffsetX;
@@ -185,7 +184,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                         Vertex[0] = GX;
                         Vertex[1] = GY + Metrics.XYH;
                         Vertex[2] = UVX;
-                        Vertex[3] = UVY;
+                        Vertex[3] = UVY + (Metrics.UVH / Font.TextureHeight);
                     } break;
 
                     case 2:
@@ -193,7 +192,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     {   
                         Vertex[0] = GX + Metrics.XYW;
                         Vertex[1] = GY;
-                        Vertex[2] = UVX;
+                        Vertex[2] = UVX + (Metrics.UVW / Font.TextureWidth);
                         Vertex[3] = UVY;
                     } break;
 
@@ -201,8 +200,8 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     {
                         Vertex[0] = GX + Metrics.XYW;
                         Vertex[1] = GY + Metrics.XYH;
-                        Vertex[2] = UVX;
-                        Vertex[3] = UVY;
+                        Vertex[2] = UVX + (Metrics.UVW / Font.TextureWidth);
+                        Vertex[3] = UVY + (Metrics.UVH / Font.TextureHeight);
                     } break;
                 }
                 Vertex += FloatPerVertex;

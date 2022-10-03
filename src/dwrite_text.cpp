@@ -21,7 +21,7 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
     font_atlas Atlas = {};
 
     // NOTE(Oskar): Allocate Atlas based on slice width and height.
-    int32_t GlyphSize = 8 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
+    int32_t GlyphSize = 4 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
     int32_t QuarterCount = Font->GlyphCount / 4;
     Atlas.Width  = 25 * GlyphSize;
     Atlas.Height = 100 * GlyphSize;
@@ -70,8 +70,10 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
         Font->Metrics[GlyphIndex].Advance = (float)RoundUp(((float)GlyphMetrics.advanceWidth) * State->PixelPerDesignUnit);
         Font->Metrics[GlyphIndex].XYW     = TextureWidth;
         Font->Metrics[GlyphIndex].XYH     = TextureHeight;
-        Font->Metrics[GlyphIndex].UVW     = Column * GlyphSize;
-        Font->Metrics[GlyphIndex].UVH     = Row * GlyphSize;
+        Font->Metrics[GlyphIndex].UVX     = (Column * GlyphSize);
+        Font->Metrics[GlyphIndex].UVY     = (Row * GlyphSize);
+        Font->Metrics[GlyphIndex].UVW     = GlyphSize;
+        Font->Metrics[GlyphIndex].UVH     = GlyphSize;
 
         // NOTE(Oskar): Get Bitmap from RenderTaget and blit the bitmap to the allocated atlas manually.
         HBITMAP Bitmap = (HBITMAP)GetCurrentObject(State->DC, OBJ_BITMAP);
