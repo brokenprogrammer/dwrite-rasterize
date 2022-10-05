@@ -22,9 +22,10 @@ BuildFontAtlas(dwrite_font *Font, dwrite_state *State)
 
     // NOTE(Oskar): Allocate Atlas based on slice width and height.
     int32_t GlyphSize = 4 * (int32_t)(((float)State->FontMetrics.capHeight)*State->PixelPerDesignUnit);
-    int32_t QuarterCount = Font->GlyphCount / 4;
-    Atlas.Width  = 25 * GlyphSize;
-    Atlas.Height = 100 * GlyphSize;
+    int32_t XCells = (int32_t)sqrt(Font->GlyphCount); 
+    int32_t YCells = (int32_t)(Font->GlyphCount / XCells) + 1;
+    Atlas.Width  = XCells * GlyphSize;
+    Atlas.Height = YCells * GlyphSize;
 
     Atlas.Count = Font->GlyphCount;
     uint32_t AtlasMemorySize = (Atlas.Width * Atlas.Height * 3);
