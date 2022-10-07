@@ -152,7 +152,7 @@ DWriteStateCreate(wchar_t *FontPath, float PointSize, float DPI, dwrite_font *Fo
                                                        State.DefaultRenderingParams->GetEnhancedContrast(),
                                                        State.DefaultRenderingParams->GetClearTypeLevel(),
                                                        State.DefaultRenderingParams->GetPixelGeometry(),
-                                                       DWRITE_RENDERING_MODE_NATURAL,
+                                                       DWRITE_RENDERING_MODE_DEFAULT,
                                                        &State.RenderingParams);
     CheckPointer(Error, State.RenderingParams, Assert(!"Rendering Params"));
 
