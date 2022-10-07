@@ -184,8 +184,8 @@ DWriteStateCreate(wchar_t *FontPath, float PointSize, float DPI, dwrite_font *Fo
     State.PixelPerEM = PointSize * (1.0f / 72.0f) * DPI;
     State.PixelPerDesignUnit = State.PixelPerEM / ((float)State.FontMetrics.designUnitsPerEm);
 
-    State.RasterTargetWidth  = (int32_t)(8.0f*((float)State.FontMetrics.capHeight)*State.PixelPerDesignUnit);
-    State.RasterTargetHeight = (int32_t)(8.0f*((float)State.FontMetrics.capHeight)*State.PixelPerDesignUnit);
+    State.RasterTargetWidth  = (int32_t)(8.0f * ((float)State.FontMetrics.capHeight)*State.PixelPerDesignUnit);
+    State.RasterTargetHeight = (int32_t)(8.0f * ((float)State.FontMetrics.capHeight)*State.PixelPerDesignUnit);
     State.RasterTargetX = (float)(State.RasterTargetWidth / 2);
     State.RasterTargetY = (float)(State.RasterTargetHeight / 2);
 
@@ -201,6 +201,7 @@ DWriteStateCreate(wchar_t *FontPath, float PointSize, float DPI, dwrite_font *Fo
     // rendering it is not dumb to check the bounding box of the glyph against the target to see that it
     // actually fit.
     Error = State.DWriteGDIInterop->CreateBitmapRenderTarget(0, State.RasterTargetWidth, State.RasterTargetHeight, &State.RenderTarget);
+    State.RenderTarget->SetPixelsPerDip(1.0f);
     
     // NOTE(Oskar): This gives us a GDI based HDC that allows us to make GDI calls that render to the
     // IDWriteBitmapRenderTarget buffer.

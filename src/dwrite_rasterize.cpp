@@ -67,7 +67,7 @@ float vertices[] = {
      0.5f, -0.5f,
      0.0f,  0.5f,
 };
-float PointSize = 12.0f;
+float PointSize = 48.0f;
 float DPI = 96.0f;
 int32_t WindowWidth = 800;
 int32_t WindowHeight = 600;
@@ -125,7 +125,7 @@ utf8_decode(void *buf, uint32_t *c, int *e)
     return next;
 }
 
-void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, float G, float B, float Alpha)
+void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, float G, float B, float Alpha, float Scale)
 {
     int32_t Length = StringLength(Text);
     uint16_t *Indices = (uint16_t*)malloc(sizeof(uint16_t)*Length);
@@ -165,8 +165,8 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
             float UVY = Metrics.UVY;
             for (int32_t J = 0; J < VertexPerCharacter; ++J)
             {
-                float GX = LayoutX + Metrics.OffsetX;
-                float GY = LayoutY + Metrics.OffsetY;
+                float GX = LayoutX + (Metrics.OffsetX * Scale);
+                float GY = LayoutY + (Metrics.OffsetY * Scale);
 
                 switch (J)
                 {
@@ -182,7 +182,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     case 3:
                     {
                         Vertex[0] = GX;
-                        Vertex[1] = GY + Metrics.XYH;
+                        Vertex[1] = GY + (Metrics.XYH * Scale);
                         Vertex[2] = UVX;
                         Vertex[3] = UVY + Metrics.UVH;
                     } break;
@@ -190,7 +190,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                     case 2:
                     case 4:
                     {   
-                        Vertex[0] = GX + Metrics.XYW;
+                        Vertex[0] = GX + (Metrics.XYW * Scale);
                         Vertex[1] = GY;
                         Vertex[2] = UVX + Metrics.UVW;
                         Vertex[3] = UVY;
@@ -198,8 +198,8 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
 
                     case 5:
                     {
-                        Vertex[0] = GX + Metrics.XYW;
-                        Vertex[1] = GY + Metrics.XYH;
+                        Vertex[0] = GX + (Metrics.XYW * Scale);
+                        Vertex[1] = GY + (Metrics.XYH * Scale);
                         Vertex[2] = UVX + Metrics.UVW;
                         Vertex[3] = UVY + Metrics.UVH;
                     } break;
@@ -207,7 +207,7 @@ void RenderString(dwrite_font Font, char *Text, int32_t X, int32_t Y, float R, f
                 Vertex += FloatPerVertex;
             }
 
-            LayoutX += Metrics.Advance;
+            LayoutX += (Metrics.Advance * Scale);
         }
     }
 
@@ -299,6 +299,7 @@ Win32WindowProc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
 int 
 WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowCode)
 {
+    SetProcessDPIAware();
     Win32OpenGLGetWGLFunctions();
 
     WNDCLASSEXW WindowClass =
@@ -413,7 +414,7 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glEnableVertexAttribArray(AttribTexturePosition);
     }
 
-    static wchar_t FontPath[] = L"C:\\Windows\\Fonts\\comic.ttf";
+    static wchar_t FontPath[] = L"C:\\Windows\\Fonts\\arial.ttf";
     dwrite_font Font = BakeDWriteFont(FontPath, PointSize, DPI);
     
     BOOL VSYNC = TRUE;
@@ -436,7 +437,13 @@ WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int ShowC
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        RenderString(Font, "Svenska bokstäver ÅÄÖ.", 300, 60, 1.0f, 1.0f, 1.0f, 1.0f);   
+        RenderString(Font, "Example Text.", 100, 100, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
+
+        RenderString(Font, "Example Text.", 100, 160, 1.0f, 1.0f, 1.0f, 1.0f, 0.7f);
+
+        RenderString(Font, "Example Text.", 100, 220, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f);
+
+        RenderString(Font, "Example Text.", 100, 280, 1.0f, 1.0f, 1.0f, 1.0f, 0.3f);   
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, Framebuffer);
